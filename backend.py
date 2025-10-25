@@ -7,11 +7,11 @@ from twilio.rest import Client
 import os
 from dotenv import load_dotenv
 
-# Initialize FastAPI app
-app = FastAPI()
-
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize FastAPI app
+app = FastAPI()
 
 # Twilio configuration
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
@@ -23,24 +23,26 @@ if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-# In-memory storage for sessions and bookings
+# In-memory storage for sessions and reservations
 call_sessions: Dict[str, Dict] = {}
-booking_db: List[Dict] = []
+reservation_db: List[Dict] = []
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 
-# Pydantic model for booking
-class BookingMenu(BaseModel):
-    booking_id: str
-    trans_id: str
-    passenger_fullname: str
-    passenger_contact: str
+# Pydantic model for reservation
+class ReservationMenu(BaseModel):
+    reservation_id: str
+    customer_name: str
+    customer_contact: str
+    reservation_date: str
+    reservation_time: str
+    number_of_people: int
 
 # Health check endpoint
 @app.get("/")
 def read_root():
-    return {"status": "IVR system is running", "platform": "Twilio"}
+    return {"status": "Reservation system is running", "platform": "Twilio"}
 
 # Incoming call webhook
 @app.post("/twilio/incoming_call")
@@ -62,7 +64,7 @@ async def handle_incoming_call(request: Request):
     # Create TwiML response
     response = VoiceResponse()
     gather = Gather(num_digits=1, action="/twilio/gather", method="POST")
-    gather.say("Welcome to Air India Customer Support. Press 1 for booking menu. Press 2 for flight status.")
+    gather.say("Welcome to our Restaurant Reservation System. Press 1 to make a reservation. Press 2 to check an existing reservation.")
     response.append(gather)
     response.say("We did not receive any input. Goodbye.")
     response.hangup()
@@ -83,39 +85,39 @@ async def handle_gather(request: Request):
     response = VoiceResponse()
 
     if digits == "1":
-        response.redirect("/twilio/booking_menu", method="POST")
+        response.redirect("/twilio/reservation_menu", method="POST")
     elif digits == "2":
-        response.redirect("/twilio/status_menu", method="POST")
+        response.redirect("/twilio/check_reservation", method="POST")
     else:
         response.say("Invalid input. Please try again.")
         response.redirect("/twilio/incoming_call", method="POST")
 
     return Response(content=str(response), media_type="application/xml")
 
-# Booking menu
-@app.post("/twilio/booking_menu")
-async def booking_menu():
+# Reservation menu
+@app.post("/twilio/reservation_menu")
+async def reservation_menu():
     response = VoiceResponse()
-    gather = Gather(num_digits=1, action="/twilio/booking_option", method="POST")
-    gather.say("Press 1 for domestic booking. Press 2 for international booking.")
+    gather = Gather(num_digits=1, action="/twilio/reservation_option", method="POST")
+    gather.say("Press 1 to make a new reservation. Press 2 to cancel a reservation.")
     response.append(gather)
     response.say("We did not receive any input. Goodbye.")
     response.hangup()
 
     return Response(content=str(response), media_type="application/xml")
 
-# Handle booking option
-@app.post("/twilio/booking_option")
-async def booking_option(request: Request):
+# Handle reservation option
+@app.post("/twilio/reservation_option")
+async def reservation_option(request: Request):
     form_data = await request.form()
     digits = form_data.get("Digits")
 
     response = VoiceResponse()
 
     if digits == "1":
-        response.say("You selected domestic booking. Please visit our website for more details.")
+        response.say("You selected to make a new reservation. Please visit our website or call our staff for assistance.")
     elif digits == "2":
-        response.say("You selected international booking. Please visit our website for more details.")
+        response.say("You selected to cancel a reservation. Please provide your reservation ID to our staff.")
     else:
         response.say("Invalid input. Returning to the main menu.")
         response.redirect("/twilio/incoming_call", method="POST")
@@ -123,23 +125,23 @@ async def booking_option(request: Request):
     response.hangup()
     return Response(content=str(response), media_type="application/xml")
 
-# Status menu
-@app.post("/twilio/status_menu")
-async def status_menu():
+# Check reservation
+@app.post("/twilio/check_reservation")
+async def check_reservation():
     response = VoiceResponse()
-    response.say("Please visit our website to check flight status.")
+    response.say("Please provide your reservation ID to our staff to check your reservation details.")
     response.hangup()
     return Response(content=str(response), media_type="application/xml")
 
-# Cancel booking
-@app.delete("/cancel_booking/{booking_id}")
-def cancel_booking(booking_id: str):
-    for booking in booking_db:
-        if booking["booking_id"] == booking_id:
-            booking_db.remove(booking)
-            return {"message": "Booking cancelled successfully."}
+# Cancel reservation
+@app.delete("/cancel_reservation/{reservation_id}")
+def cancel_reservation(reservation_id: str):
+    for reservation in reservation_db:
+        if reservation["reservation_id"] == reservation_id:
+            reservation_db.remove(reservation)
+            return {"message": "Reservation cancelled successfully."}
 
-    raise HTTPException(status_code=404, detail="Booking not found.")
+    raise HTTPException(status_code=404, detail="Reservation not found.")
 
 # Exception handler
 @app.exception_handler(Exception)
