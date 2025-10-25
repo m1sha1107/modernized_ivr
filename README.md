@@ -107,10 +107,6 @@ Copy the public URL provided by Ngrok and configure it as your Twilio webhook.
 ## Error Handling
 - All exceptions are logged, and a generic `500 Internal Server Error` response is returned for unhandled exceptions.
 
-## Future Enhancements
-- Implement persistent session storage (e.g., Redis or PostgreSQL).
-- Add support for speech-to-text and text-to-speech using Twilio Media Streams.
-- Write unit tests for all endpoints.
 
 ## License
 This project is licensed under the MIT License.
