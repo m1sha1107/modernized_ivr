@@ -6,6 +6,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client
 import os
 from dotenv import load_dotenv
+from fastapi.responses import FileResponse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,6 +43,7 @@ class ReservationMenu(BaseModel):
 # Health check endpoint
 @app.get("/")
 def read_root():
+    """Health check endpoint."""
     return {"status": "Reservation system is running", "platform": "Twilio"}
 
 # Incoming call webhook
@@ -97,6 +99,7 @@ async def handle_gather(request: Request):
 # Reservation menu
 @app.post("/twilio/reservation_menu")
 async def reservation_menu():
+    """Provide options for reservation management."""
     response = VoiceResponse()
     gather = Gather(num_digits=1, action="/twilio/reservation_option", method="POST")
     gather.say("Press 1 to make a new reservation. Press 2 to cancel a reservation.")
@@ -109,6 +112,7 @@ async def reservation_menu():
 # Handle reservation option
 @app.post("/twilio/reservation_option")
 async def reservation_option(request: Request):
+    """Handle user selection for reservation options."""
     form_data = await request.form()
     digits = form_data.get("Digits")
 
@@ -128,6 +132,7 @@ async def reservation_option(request: Request):
 # Check reservation
 @app.post("/twilio/check_reservation")
 async def check_reservation():
+    """Provide instructions to check a reservation."""
     response = VoiceResponse()
     response.say("Please provide your reservation ID to our staff to check your reservation details.")
     response.hangup()
@@ -136,6 +141,7 @@ async def check_reservation():
 # Cancel reservation
 @app.delete("/cancel_reservation/{reservation_id}")
 def cancel_reservation(reservation_id: str):
+    """Cancel a reservation by ID."""
     for reservation in reservation_db:
         if reservation["reservation_id"] == reservation_id:
             reservation_db.remove(reservation)
@@ -146,5 +152,12 @@ def cancel_reservation(reservation_id: str):
 # Exception handler
 @app.exception_handler(Exception)
 def handle_exceptions(request: Request, exc: Exception):
+    """Log and handle exceptions."""
     logging.error(f"Error occurred: {exc}")
     return Response(content="Internal server error", status_code=500)
+
+# Serve favicon
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve the favicon.ico file."""
+    return FileResponse("static/favicon.ico")
