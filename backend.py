@@ -7,6 +7,7 @@ from twilio.rest import Client
 import os
 from dotenv import load_dotenv
 from fastapi.responses import FileResponse
+from redis import Redis
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,9 +25,13 @@ if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-# In-memory storage for sessions and reservations
-call_sessions: Dict[str, Dict] = {}
-reservation_db: List[Dict] = []
+# Initialize Redis connection
+redis_client = Redis(
+    host=os.getenv("REDIS_HOST", "localhost"),
+    port=int(os.getenv("REDIS_PORT", 6379)),
+    db=int(os.getenv("REDIS_DB", 0)),
+    decode_responses=True  # Ensures Redis returns strings instead of bytes
+)
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -60,8 +65,11 @@ async def handle_incoming_call(request: Request):
     if not call_sid or not from_number:
         raise HTTPException(status_code=400, detail="Invalid Twilio request")
 
-    # Store call session
-    call_sessions[call_sid] = {"from": from_number, "status": "in-progress"}
+    # Store call session in Redis
+    redis_client.hset(f"call_session:{call_sid}", mapping={
+        "from": from_number,
+        "status": "in-progress"
+    })
 
     # Create TwiML response
     response = VoiceResponse()
@@ -142,12 +150,13 @@ async def check_reservation():
 @app.delete("/cancel_reservation/{reservation_id}")
 def cancel_reservation(reservation_id: str):
     """Cancel a reservation by ID."""
-    for reservation in reservation_db:
-        if reservation["reservation_id"] == reservation_id:
-            reservation_db.remove(reservation)
-            return {"message": "Reservation cancelled successfully."}
+    # Check if reservation exists in Redis
+    if not redis_client.exists(f"reservation:{reservation_id}"):
+        raise HTTPException(status_code=404, detail="Reservation not found.")
 
-    raise HTTPException(status_code=404, detail="Reservation not found.")
+    # Delete reservation from Redis
+    redis_client.delete(f"reservation:{reservation_id}")
+    return {"message": "Reservation cancelled successfully."}
 
 # Exception handler
 @app.exception_handler(Exception)
