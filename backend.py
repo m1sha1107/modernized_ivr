@@ -65,11 +65,9 @@ async def handle_incoming_call(request: Request):
     if not call_sid or not from_number:
         raise HTTPException(status_code=400, detail="Invalid Twilio request")
 
-    # Store call session in Redis
-    redis_client.hset(f"call_session:{call_sid}", mapping={
-        "from": from_number,
-        "status": "in-progress"
-    })
+    # Store call session in Redis (compatible with all Redis versions)
+    redis_client.hset(f"call_session:{call_sid}", "from_number", from_number)
+    redis_client.hset(f"call_session:{call_sid}", "status", "in-progress")
 
     # Create TwiML response
     response = VoiceResponse()
