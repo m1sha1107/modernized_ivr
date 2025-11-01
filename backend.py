@@ -41,6 +41,41 @@ logging.basicConfig(level=logging.INFO)
 # Initialize Conversational AI
 dialogue_manager = DialogueFlowManager(redis_client)
 
+# Voice configuration constant
+TTS_VOICE = "Polly.Joanna"
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def create_speech_gather(action: str, timeout: int = 10, language: str = "en-US") -> Gather:
+    """Create a standardized speech Gather object."""
+    return Gather(
+        input="speech",
+        action=action,
+        method="POST",
+        speech_timeout="auto",
+        timeout=timeout,
+        language=language
+    )
+
+def store_call_session(call_sid: str, from_number: str):
+    """Store call session information in Redis."""
+    redis_client.hset(f"call_session:{call_sid}", "from_number", from_number)
+    redis_client.hset(f"call_session:{call_sid}", "status", "in-progress")
+
+def save_reservation(call_sid: str) -> str:
+    """Save reservation data to Redis and return reservation ID."""
+    reservation_data = dialogue_manager.get_reservation_data(call_sid)
+    if reservation_data:
+        reservation_id = str(uuid.uuid4())[:8].upper()
+        # Use individual hset calls for compatibility with older Redis versions
+        for key, value in reservation_data.items():
+            redis_client.hset(f"reservation:{reservation_id}", key, value)
+        redis_client.hset(f"reservation:{reservation_id}", "reservation_id", reservation_id)
+        return reservation_id
+    return None
+
 # Pydantic model for reservation
 class ReservationMenu(BaseModel):
     reservation_id: str
@@ -70,16 +105,15 @@ async def handle_incoming_call(request: Request):
     if not call_sid or not from_number:
         raise HTTPException(status_code=400, detail="Invalid Twilio request")
 
-    # Store call session in Redis (compatible with all Redis versions)
-    redis_client.hset(f"call_session:{call_sid}", "from_number", from_number)
-    redis_client.hset(f"call_session:{call_sid}", "status", "in-progress")
+    # Store call session in Redis
+    store_call_session(call_sid, from_number)
 
     # Create TwiML response
     response = VoiceResponse()
     gather = Gather(num_digits=1, action="/twilio/gather", method="POST")
     gather.say("Welcome to our Restaurant Reservation System. Press 1 to make a reservation. Press 2 to check an existing reservation.")
     response.append(gather)
-    response.say("We did not receive any input. Goodbye.")
+    response.say("We did not receive any input. Thank you for calling. Goodbye.")
     response.hangup()
 
     return Response(content=str(response), media_type="application/xml")
@@ -100,40 +134,28 @@ async def handle_gather(request: Request):
     if digits == "1":
         # Route to conversational AI flow for making reservation
         dialogue_manager.set_conversation_state(call_sid, ConversationState.INITIAL)
-        gather = Gather(
-            input="speech",
-            action="/twilio/conversational_gather",
-            method="POST",
-            speech_timeout="auto",
-            language="en-US"
-        )
+        gather = create_speech_gather("/twilio/conversational_gather")
         gather.say(
             "Great! I'd be happy to help you make a reservation. "
             "Please speak naturally. What's your name?",
-            voice="alice"
+            voice=TTS_VOICE
         )
         dialogue_manager.set_conversation_state(call_sid, ConversationState.COLLECTING_NAME)
         response.append(gather)
-        response.say("I didn't catch that. Please try again.", voice="alice")
+        response.say("I didn't catch that. Please try again.", voice=TTS_VOICE)
         response.redirect("/twilio/gather", method="POST")
     elif digits == "2":
         # Route to conversational AI flow for checking reservation
         dialogue_manager.set_conversation_state(call_sid, ConversationState.COLLECTING_RESERVATION_ID)
         redis_client.hset(f"call_session:{call_sid}", "action_type", "check")
-        gather = Gather(
-            input="speech",
-            action="/twilio/conversational_gather",
-            method="POST",
-            speech_timeout="auto",
-            language="en-US"
-        )
+        gather = create_speech_gather("/twilio/conversational_gather")
         gather.say(
             "I can help you check your reservation. "
             "Please provide your reservation ID. You can say it or spell it out.",
-            voice="alice"
+            voice=TTS_VOICE
         )
         response.append(gather)
-        response.say("I didn't catch that. Please try again.", voice="alice")
+        response.say("I didn't catch that. Please try again.", voice=TTS_VOICE)
         response.redirect("/twilio/gather", method="POST")
     else:
         response.say("Invalid input. Please try again.")
@@ -168,42 +190,30 @@ async def reservation_option(request: Request):
         # Route to conversational AI for making reservation
         if call_sid:
             dialogue_manager.set_conversation_state(call_sid, ConversationState.INITIAL)
-        gather = Gather(
-            input="speech",
-            action="/twilio/conversational_gather",
-            method="POST",
-            speech_timeout="auto",
-            language="en-US"
-        )
+        gather = create_speech_gather("/twilio/conversational_gather")
         gather.say(
             "Perfect! Let's make your reservation. Please speak naturally. "
             "What's your name?",
-            voice="alice"
+            voice=TTS_VOICE
         )
         if call_sid:
             dialogue_manager.set_conversation_state(call_sid, ConversationState.COLLECTING_NAME)
         response.append(gather)
-        response.say("I didn't catch that. Please try again.", voice="alice")
+        response.say("I didn't catch that. Please try again.", voice=TTS_VOICE)
         response.redirect("/twilio/reservation_option", method="POST")
     elif digits == "2":
         # Route to conversational AI for canceling reservation
         if call_sid:
             dialogue_manager.set_conversation_state(call_sid, ConversationState.COLLECTING_RESERVATION_ID)
             redis_client.hset(f"call_session:{call_sid}", "action_type", "cancel")
-        gather = Gather(
-            input="speech",
-            action="/twilio/conversational_gather",
-            method="POST",
-            speech_timeout="auto",
-            language="en-US"
-        )
+        gather = create_speech_gather("/twilio/conversational_gather")
         gather.say(
             "I can help you cancel your reservation. "
             "Please provide your reservation ID.",
-            voice="alice"
+            voice=TTS_VOICE
         )
         response.append(gather)
-        response.say("I didn't catch that. Please try again.", voice="alice")
+        response.say("I didn't catch that. Please try again.", voice=TTS_VOICE)
         response.redirect("/twilio/reservation_option", method="POST")
     else:
         response.say("Invalid input. Returning to the main menu.")
@@ -258,8 +268,7 @@ async def handle_conversational_call(request: Request):
         raise HTTPException(status_code=400, detail="Invalid Twilio request")
     
     # Store call session in Redis
-    redis_client.hset(f"call_session:{call_sid}", "from_number", from_number)
-    redis_client.hset(f"call_session:{call_sid}", "status", "in-progress")
+    store_call_session(call_sid, from_number)
     
     # Initialize conversation state
     dialogue_manager.set_conversation_state(call_sid, ConversationState.INITIAL)
@@ -268,18 +277,12 @@ async def handle_conversational_call(request: Request):
     response = VoiceResponse()
     
     # Use Gather with speech input instead of digits
-    gather = Gather(
-        input="speech",
-        action="/twilio/conversational_gather",
-        method="POST",
-        speech_timeout="auto",  # Auto-detect end of speech
-        language="en-US"
-    )
+    gather = create_speech_gather("/twilio/conversational_gather")
     gather.say(
         "Hello! Welcome to our Restaurant Reservation System. "
         "I can help you make a reservation, check an existing reservation, "
         "or cancel a reservation. How may I assist you today?",
-        voice="alice"  # Use natural-sounding voice
+        voice=TTS_VOICE
     )
     response.append(gather)
     
@@ -312,55 +315,36 @@ async def handle_conversational_gather(request: Request):
     
     # Handle based on conversation flow response
     if response_data.get('next_action') == 'hangup':
-        response.say(response_data['response_text'], voice="alice")
+        response.say(response_data['response_text'], voice=TTS_VOICE)
         response.hangup()
     elif response_data.get('needs_more_info'):
         # Continue conversation - gather more information
-        gather = Gather(
-            input="speech",
-            action="/twilio/conversational_gather",
-            method="POST",
-            speech_timeout="auto",
-            timeout=10,  # Give more time for response
-            language="en-US"
-        )
-        gather.say(response_data['response_text'], voice="alice")
+        gather = create_speech_gather("/twilio/conversational_gather", timeout=10)
+        gather.say(response_data['response_text'], voice=TTS_VOICE)
         response.append(gather)
         
         # Fallback if no response - redirect back to keep conversation alive
-        response.say("I didn't catch that. Please try again.", voice="alice")
+        response.say("I didn't catch that. Please try again.", voice=TTS_VOICE)
         # Create another gather to retry
-        fallback_gather = Gather(
-            input="speech",
-            action="/twilio/conversational_gather",
-            method="POST",
-            speech_timeout="auto",
-            timeout=10,
-            language="en-US"
-        )
-        fallback_gather.say(response_data['response_text'], voice="alice")
+        fallback_gather = create_speech_gather("/twilio/conversational_gather", timeout=10)
+        fallback_gather.say(response_data['response_text'], voice=TTS_VOICE)
         response.append(fallback_gather)
         
         # Only hangup if multiple failures (shouldn't reach here normally)
-        response.say("I'm having trouble understanding. Please call back later or speak to our staff. Goodbye.", voice="alice")
+        response.say("I'm having trouble understanding. Please call back later or speak to our staff. Goodbye.", voice=TTS_VOICE)
         response.hangup()
     else:
         # Complete the flow
-        response.say(response_data['response_text'], voice="alice")
+        response.say(response_data['response_text'], voice=TTS_VOICE)
         
         # If reservation was confirmed, save it
         if response_data.get('next_action') == 'confirm_reservation':
-            # Save reservation to Redis
-            reservation_data = dialogue_manager.get_reservation_data(call_sid)
-            if reservation_data:
-                reservation_id = str(uuid.uuid4())[:8].upper()
-                redis_client.hset(f"reservation:{reservation_id}", mapping=reservation_data)
-                redis_client.hset(f"reservation:{reservation_id}", "reservation_id", reservation_id)
-                
+            reservation_id = save_reservation(call_sid)
+            if reservation_id:
                 response.say(
-                    f"Your reservation has been confirmed! Your reservation ID is {reservation_id}. "
-                    f"Please save this for your records. Thank you for calling!",
-                    voice="alice"
+                    f"Your reservation ID is {reservation_id}. "
+                    f"Please save this for your records. Thank you for calling and have a great day!",
+                    voice=TTS_VOICE
                 )
         
         response.hangup()
@@ -382,8 +366,7 @@ async def handle_smart_call(request: Request):
         raise HTTPException(status_code=400, detail="Invalid Twilio request")
     
     # Store call session
-    redis_client.hset(f"call_session:{call_sid}", "from_number", from_number)
-    redis_client.hset(f"call_session:{call_sid}", "status", "in-progress")
+    store_call_session(call_sid, from_number)
     dialogue_manager.set_conversation_state(call_sid, ConversationState.INITIAL)
     
     response = VoiceResponse()
@@ -402,7 +385,7 @@ async def handle_smart_call(request: Request):
         "Say 'make a reservation', or press 1. "
         "Say 'check reservation', or press 2. "
         "How can I help you?",
-        voice="alice"
+        voice=TTS_VOICE
     )
     response.append(gather)
     response.say("We didn't receive any input. Goodbye.")
@@ -435,14 +418,8 @@ async def handle_smart_gather(request: Request):
             response.redirect("/twilio/conversational_call", method="POST")
         elif digits == "2":
             dialogue_manager.set_conversation_state(call_sid, ConversationState.COLLECTING_RESERVATION_ID)
-            gather = Gather(
-                input="speech",
-                action="/twilio/conversational_gather",
-                method="POST",
-                speech_timeout="auto",
-                language="en-US"
-            )
-            gather.say("Please provide your reservation ID.", voice="alice")
+            gather = create_speech_gather("/twilio/conversational_gather")
+            gather.say("Please provide your reservation ID.", voice=TTS_VOICE)
             response.append(gather)
         else:
             response.say("Invalid option. Please try again.")
@@ -452,7 +429,7 @@ async def handle_smart_gather(request: Request):
         response_data = dialogue_manager.process_user_input(call_sid, speech_result)
         
         if response_data.get('next_action') == 'hangup':
-            response.say(response_data['response_text'], voice="alice")
+            response.say(response_data['response_text'], voice=TTS_VOICE)
             response.hangup()
         elif response_data.get('needs_more_info'):
             gather = Gather(
@@ -462,20 +439,17 @@ async def handle_smart_gather(request: Request):
                 speech_timeout="auto",
                 language="en-US"
             )
-            gather.say(response_data['response_text'], voice="alice")
+            gather.say(response_data['response_text'], voice=TTS_VOICE)
             response.append(gather)
         else:
-            response.say(response_data['response_text'], voice="alice")
+            response.say(response_data['response_text'], voice=TTS_VOICE)
             
             if response_data.get('next_action') == 'confirm_reservation':
-                reservation_data = dialogue_manager.get_reservation_data(call_sid)
-                if reservation_data:
-                    reservation_id = str(uuid.uuid4())[:8].upper()
-                    redis_client.hset(f"reservation:{reservation_id}", mapping=reservation_data)
-                    redis_client.hset(f"reservation:{reservation_id}", "reservation_id", reservation_id)
+                reservation_id = save_reservation(call_sid)
+                if reservation_id:
                     response.say(
                         f"Your reservation ID is {reservation_id}. Thank you!",
-                        voice="alice"
+                        voice=TTS_VOICE
                     )
             response.hangup()
     else:

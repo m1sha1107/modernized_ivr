@@ -1,7 +1,3 @@
-"""
-Conversational AI Module for IVR System
-Implements rule-based intent recognition and dialogue flow management
-"""
 import re
 import logging
 from typing import Dict, List, Optional, Tuple
@@ -260,9 +256,7 @@ class IntentRecognizer:
         # Try multiple phone number patterns
         phone_patterns = [
             r'\b(\d{10,15})\b',  # Standard: 10-15 digits
-            r'\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b',  # US format: 555-123-4567
-            r'\b(\d{3}[-.\s]?\d{7})\b',  # Alternative format
-            r'\b(\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4})\b',  # (555) 123-4567
+           
         ]
         
         phone_match = None
@@ -402,7 +396,48 @@ class DialogueFlowManager:
         elif current_state in [ConversationState.COLLECTING_NAME, ConversationState.COLLECTING_CONTACT,
                                ConversationState.COLLECTING_DATE, ConversationState.COLLECTING_TIME,
                                ConversationState.COLLECTING_GUESTS]:
-            # Check for contact confirmation first
+            # Check for time AM/PM clarification FIRST (before processing entities)
+            if current_state == ConversationState.COLLECTING_TIME:
+                pending_hour = self.redis_client.hget(f"call_session:{call_sid}", "pending_hour")
+                if pending_hour:
+                    user_input_lower = user_input.lower()
+                    ampm_match = re.search(r'\b(am|pm)\b', user_input_lower)
+                    
+                    if ampm_match:
+                        # User provided AM/PM - combine with stored hour
+                        time_extracted = f"{pending_hour} {ampm_match.group(1)}"
+                        if self._validate_time_within_hours(time_extracted):
+                            self.update_reservation_data(call_sid, {'time': time_extracted})
+                            self.redis_client.hdel(f"call_session:{call_sid}", "pending_hour")
+                            response_data['response_text'] = f"Perfect! Time: {time_extracted}. How many people will be dining?"
+                            self.set_conversation_state(call_sid, ConversationState.COLLECTING_GUESTS)
+                            response_data['next_action'] = 'collect_guests'
+                            response_data['needs_more_info'] = True
+                            self.redis_client.hdel(f"call_session:{call_sid}", "time_retry_count")
+                            return response_data  # Exit early - don't process further
+                        else:
+                            response_data['response_text'] = f"I'm sorry, but our restaurant is only open from 9am to 10pm. " \
+                                                           f"You requested {time_extracted}. " \
+                                                           f"Please choose a time between 9am and 10pm."
+                            response_data['needs_more_info'] = True
+                            return response_data
+                    else:
+                        # Check if user said full time like "1pm" (ignore pending_hour in this case)
+                        full_time_match = re.search(r'(\d{1,2})\s*(am|pm)', user_input_lower)
+                        if full_time_match:
+                            hour = full_time_match.group(1)
+                            ampm = full_time_match.group(2)
+                            time_extracted = f"{hour} {ampm}"
+                            if self._validate_time_within_hours(time_extracted):
+                                self.update_reservation_data(call_sid, {'time': time_extracted})
+                                self.redis_client.hdel(f"call_session:{call_sid}", "pending_hour")  # Clear it
+                                response_data['response_text'] = f"Perfect! Time: {time_extracted}. How many people will be dining?"
+                                self.set_conversation_state(call_sid, ConversationState.COLLECTING_GUESTS)
+                                response_data['next_action'] = 'collect_guests'
+                                response_data['needs_more_info'] = True
+                                self.redis_client.hdel(f"call_session:{call_sid}", "time_retry_count")
+                                return response_data
+            # Check for contact confirmation
             pending_contact = self.redis_client.hget(f"call_session:{call_sid}", "pending_contact")
             if pending_contact and current_state == ConversationState.COLLECTING_CONTACT:
                 confirmation_words = ['yes', 'yeah', 'yep', 'correct', 'right', 'that\'s right', 'that is correct', 'yup']
@@ -428,13 +463,15 @@ class DialogueFlowManager:
                 else:
                     # Might be a new phone number - process normally
                     response_data = self._handle_collecting_state(call_sid, current_state, user_input, entities, response_data)
-            # Check for time confirmation
+            # Check for time confirmation (only if no pending_hour was handled above)
             elif current_state == ConversationState.COLLECTING_TIME:
-                pending_time = self.redis_client.hget(f"call_session:{call_sid}", "pending_time")
-                if pending_time and response_data.get('next_action') == 'confirm_time':
+                user_input_lower = user_input.lower()
+                
+                # Check for pending time confirmation
+                if self.redis_client.hget(f"call_session:{call_sid}", "pending_time"):
+                    pending_time = self.redis_client.hget(f"call_session:{call_sid}", "pending_time")
                     confirmation_words = ['yes', 'yeah', 'yep', 'correct', 'right', 'that\'s right', 'that is correct', 'yup']
                     rejection_words = ['no', 'nope', 'incorrect', 'wrong', 'try again', 'that\'s wrong']
-                    user_input_lower = user_input.lower()
                     
                     if any(word in user_input_lower for word in confirmation_words):
                         # Confirmed - save time and move to next step
@@ -640,21 +677,51 @@ class DialogueFlowManager:
         elif current_state == ConversationState.COLLECTING_TIME:
             if 'time' in entities:
                 time = entities['time']
-                # Validate time is within restaurant hours (9am-10pm)
-                time_valid = self._validate_time_within_hours(time)
+                time_lower = time.lower()
                 
-                if time_valid:
-                    response_data['response_text'] = f"Time: {time}. How many people will be dining?"
-                    self.set_conversation_state(call_sid, ConversationState.COLLECTING_GUESTS)
-                    response_data['next_action'] = 'collect_guests'
-                    response_data['needs_more_info'] = True
-                    # Reset retry counter on success
-                    self.redis_client.hdel(f"call_session:{call_sid}", "time_retry_count")
+                # Check if time has AM/PM specified
+                has_ampm = 'am' in time_lower or 'pm' in time_lower
+                
+                # If time doesn't have AM/PM, we need to ask for clarification
+                if not has_ampm:
+                    # Extract just the number
+                    number_match = re.search(r'(\d{1,2})', time_lower)
+                    if number_match:
+                        hour = int(number_match.group(1))
+                        if 1 <= hour <= 12:
+                            # Store the hour and ask for AM/PM
+                            self.redis_client.hset(f"call_session:{call_sid}", "pending_hour", str(hour))
+                            response_data['response_text'] = f"I heard {hour}. Is that in the morning or evening? " \
+                                                           f"Please say '{hour}am' or '{hour}pm', or just say 'am' or 'pm'. " \
+                                                           f"Remember, we're open from 9am to 10pm."
+                            response_data['needs_more_info'] = True
+                        else:
+                            response_data['response_text'] = f"I heard {hour}, but that doesn't seem like a valid time. " \
+                                                             f"Please say a time between 9am and 10pm, " \
+                                                             f"like '1pm', '1 o'clock', or '7pm'."
+                            response_data['needs_more_info'] = True
+                    else:
+                        # Can't extract hour, ask again
+                        response_data['response_text'] = "I didn't catch the time clearly. " \
+                                                       "Please say the time again with AM or PM, " \
+                                                       "like '1pm' or '7pm'. Remember, we're open from 9am to 10pm."
+                        response_data['needs_more_info'] = True
                 else:
-                    response_data['response_text'] = f"I'm sorry, but our restaurant is only open from 9am to 10pm. " \
-                                                     f"You requested {time}. " \
-                                                     f"Please choose a time between 9am and 10pm."
-                    response_data['needs_more_info'] = True
+                    # Time has AM/PM - validate and proceed
+                    time_valid = self._validate_time_within_hours(time)
+                    
+                    if time_valid:
+                        response_data['response_text'] = f"Time: {time}. How many people will be dining?"
+                        self.set_conversation_state(call_sid, ConversationState.COLLECTING_GUESTS)
+                        response_data['next_action'] = 'collect_guests'
+                        response_data['needs_more_info'] = True
+                        # Reset retry counter on success
+                        self.redis_client.hdel(f"call_session:{call_sid}", "time_retry_count")
+                    else:
+                        response_data['response_text'] = f"I'm sorry, but our restaurant is only open from 9am to 10pm. " \
+                                                         f"You requested {time}. " \
+                                                         f"Please choose a time between 9am and 10pm."
+                        response_data['needs_more_info'] = True
             else:
                 # Track retry attempts
                 retry_count = self.redis_client.hget(f"call_session:{call_sid}", "time_retry_count")
@@ -696,8 +763,10 @@ class DialogueFlowManager:
                             response_data['needs_more_info'] = True
                             self.redis_client.hset(f"call_session:{call_sid}", "pending_time", time_extracted)
                         else:
+                            # Store the hour for later combination with AM/PM
+                            self.redis_client.hset(f"call_session:{call_sid}", "pending_hour", str(hour))
                             response_data['response_text'] = f"I heard {hour}. Is that in the morning or evening? " \
-                                                           f"Please say '{hour}am' or '{hour}pm'. " \
+                                                           f"Please say '{hour}am' or '{hour}pm', or just say 'am' or 'pm'. " \
                                                            f"Remember, we're open from 9am to 10pm."
                             response_data['needs_more_info'] = True
                     else:
@@ -728,15 +797,37 @@ class DialogueFlowManager:
             if 'guests' in entities:
                 guests = entities['guests']
                 # Complete reservation collection
+                self.update_reservation_data(call_sid, {'guests': guests})
                 reservation_data = self.get_reservation_data(call_sid)
-                reservation_data['guests'] = guests
                 
                 response_data['response_text'] = self._format_reservation_confirmation(reservation_data)
                 self.set_conversation_state(call_sid, ConversationState.CONFIRMING_RESERVATION)
                 response_data['next_action'] = 'confirm_reservation'
                 response_data['needs_more_info'] = False
             else:
-                response_data['response_text'] = "How many people will be dining? Please say the number."
+                # Try to extract just a number from the input
+                user_input_lower = user_input.lower()
+                
+                # Look for standalone number
+                number_match = re.search(r'\b(\d{1,2})\b', user_input_lower)
+                
+                if number_match:
+                    guests_num = int(number_match.group(1))
+                    if 1 <= guests_num <= 20:  # Reasonable range
+                        self.update_reservation_data(call_sid, {'guests': str(guests_num)})
+                        reservation_data = self.get_reservation_data(call_sid)
+                        
+                        response_data['response_text'] = self._format_reservation_confirmation(reservation_data)
+                        self.set_conversation_state(call_sid, ConversationState.CONFIRMING_RESERVATION)
+                        response_data['next_action'] = 'confirm_reservation'
+                        response_data['needs_more_info'] = False
+                    else:
+                        response_data['response_text'] = f"I heard {guests_num} people. " \
+                                                       f"Please confirm if that's correct, or say a number between 1 and 20."
+                        response_data['needs_more_info'] = True
+                else:
+                    response_data['response_text'] = "How many people will be dining? Please just say the number, like '2' or '4'."
+                    response_data['needs_more_info'] = True
         
         return response_data
     
@@ -818,7 +909,7 @@ class DialogueFlowManager:
         time = reservation_data.get('time', 'the selected time')
         guests = reservation_data.get('guests', 'N/A')
         
-        return f"Perfect! Let me confirm your reservation details. " \
-               f"Name: {name}, Date: {date}, Time: {time}, Number of guests: {guests}. " \
-               f"Your reservation has been recorded. Is this correct?"
+        return f"Perfect! Let me confirm your reservation. " \
+               f"Name: {name}. Date: {date}. Time: {time}. Number of guests: {guests}. " \
+               f"Your reservation has been confirmed. Thank you for calling!"
 
