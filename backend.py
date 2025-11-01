@@ -249,10 +249,6 @@ def handle_exceptions(request: Request, exc: Exception):
     logging.error(f"Error occurred: {exc}")
     return Response(content="Internal server error", status_code=500)
 
-# ============================================================================
-# CONVERSATIONAL AI ENDPOINTS (Module 3)
-# ============================================================================
-
 # Conversational incoming call handler (speech-enabled)
 @app.post("/twilio/conversational_call")
 async def handle_conversational_call(request: Request):
