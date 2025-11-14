@@ -454,7 +454,33 @@ async def handle_smart_gather(request: Request):
     
     return Response(content=str(response), media_type="application/xml")
 
+# In backend.py, under the other FastAPI endpoints:
 
+@app.post("/api/reservations")
+async def create_web_reservation(reservation: ReservationMenu):
+    """
+    Handle web-based reservation creation using the ReservationMenu model.
+    """
+    try:
+        # Generate a new unique reservation ID
+        reservation_id = str(uuid.uuid4())[:8].upper()
+
+        # Prepare data for Redis
+        reservation_data = reservation.model_dump()
+        reservation_data["reservation_id"] = reservation_id
+
+        # Save data to Redis
+        redis_key = f"reservation:{reservation_id}"
+        redis_client.hmset(redis_key, reservation_data)
+        
+        logging.info(f"Web reservation created: {reservation_id}")
+
+        return {"message": "Reservation created successfully.", "reservation_id": reservation_id}
+
+    except Exception as e:
+        logging.error(f"Error creating web reservation: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error while creating reservation.")
+    
 # Serve favicon
 @app.get("/favicon.ico")
 async def favicon():

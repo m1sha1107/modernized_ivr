@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Reservation Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        h1, h2 { color: #333; }
+        form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; padding: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        label { font-weight: bold; }
+        input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"] {
+            width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;
+        }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; grid-column: 1 / -1; }
+        button:hover { background-color: #45a049; }
+        .reservation-result { margin-top: 20px; padding: 15px; border-left: 5px solid #007bff; background-color: #e9f7ff; border-radius: 4px; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍽️ Reservation Dashboard</h1>
+
+        <h2>Make a New Reservation</h2>
+        <form id="createReservationForm">
+            <label for="name">Name:</label>
+            <input type="text" id="name" required>
+
+            <label for="contact">Contact (Phone/Email):</label>
+            <input type="text" id="contact" required>
+
+            <label for="date">Date:</label>
+            <input type="date" id="date" required>
+
+            <label for="time">Time:</label>
+            <input type="time" id="time" required>
+
+            <label for="guests">Guests:</label>
+            <input type="number" id="guests" min="1" max="20" required>
+            
+            <button type="submit">Book Reservation</button>
+            <p id="createMessage" class="error"></p>
+        </form>
+
+        <hr>
+
+        <h2>Manage Existing Reservation</h2>
+        <form id="manageReservationForm">
+            <label for="reservationId">Reservation ID:</label>
+            <input type="text" id="reservationId" required style="grid-column: 1 / -1;">
+            
+            <button type="button" id="checkButton">Check Details</button>
+            <button type="button" id="cancelButton" style="background-color: #f44336;">Cancel Reservation</button>
+        </form>
+
+        <div id="reservationDetails" class="reservation-result" style="display: none;">
+            <h3>Reservation Details:</h3>
+            <pre id="detailsContent"></pre>
+        </div>
+        <p id="manageMessage" class="error"></p>
+
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
