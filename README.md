@@ -1,5 +1,14 @@
 # IVR Restaurant Reservation System (Twilio + FastAPI + Redis + AI)
 
+## 🚀 Live Demo
+
+You can interact with a live deployment of this system.
+
+**Render URL:**
+**[https://modernized-ivr.onrender.com](https://modernized-ivr.onrender.com)**
+
+---
+
 ## Overview
 
 This project implements an **AI-driven Interactive Voice Response (IVR)** system for a restaurant reservation service.
@@ -24,34 +33,36 @@ It integrates **FastAPI**, **Twilio**, **Redis**, and a **Conversational AI laye
 ## Architecture Overview
 
 ```
-        ┌────────────────────┐
-        │     Caller         │
-        │  (Phone / Voice)   │
-        └────────┬───────────┘
-                 │
-                 ▼
-         ┌──────────────┐
-         │   Twilio     │
-         │ Voice & STT  │
-         └──────┬───────┘
-                │ Webhook
-                ▼
-        ┌────────────────────┐
-        │   FastAPI Server   │
-        │   (backend.py)     │
-        └──────┬─────────────┘
-               │ Calls
-               ▼
-        ┌────────────────────┐
-        │ DialogueFlowManager│
-        │ (conversational_ai)│
-        └──────┬─────────────┘
-               │ State + Data
-               ▼
-        ┌────────────────────┐
-        │       Redis        │
-        │ Session & Storage  │
-        └────────────────────┘
+
+        ┌────────────────────┐
+        │     Caller         │
+        │  (Phone / Voice)   │
+        └────────┬───────────┘
+                 │
+                 ▼
+         ┌──────────────┐
+         │   Twilio     │
+         │ Voice & STT  │
+         └──────┬───────┘
+                │ Webhook
+                ▼
+        ┌────────────────────┐
+        │   FastAPI Server   │
+        │   (backend.py)     │
+        └──────┬─────────────┘
+               │ Calls
+               ▼
+        ┌────────────────────┐
+        │ DialogueFlowManager│
+        │ (conversational\_ai)│
+        └──────┬─────────────┘
+               │ State + Data
+               ▼
+        ┌────────────────────┐
+        │       Redis        │
+        │ Session & Storage  │
+        └────────────────────┘
+
 ```
 
 ---
@@ -59,14 +70,16 @@ It integrates **FastAPI**, **Twilio**, **Redis**, and a **Conversational AI laye
 ## Project Structure
 
 ```
+
 IVR Project
-├── backend.py                # FastAPI app handling Twilio routes and call flow
-├── conversational_ai.py      # AI conversation manager and logic
-├── .env                      # Environment variables (not committed)
-├── .gitignore                # Ignore sensitive and unnecessary files
-├── static/favicon.ico        # Application favicon
-└── venv/                     # Virtual environment (ignored in version control)
-```
+├── backend.py                \# FastAPI app handling Twilio routes and call flow
+├── conversational\_ai.py      \# AI conversation manager and logic
+├── .env                      \# Environment variables (not committed)
+├── .gitignore                \# Ignore sensitive and unnecessary files
+├── static/favicon.ico        \# Application favicon
+└── venv/                     \# Virtual environment (ignored in version control)
+
+````
 
 ---
 
@@ -77,8 +90,8 @@ IVR Project
 
 2. **Twilio Account**
 
-   * Sign up at [Twilio Console](https://www.twilio.com/console).
-   * Get your **Account SID**, **Auth Token**, and **Phone Number**.
+  * Sign up at [Twilio Console](https://www.twilio.com/console).
+  * Get your **Account SID**, **Auth Token**, and **Phone Number**.
 
 3. **Redis**
    Used for session tracking and reservation persistence.
@@ -86,36 +99,36 @@ IVR Project
    ```bash
    sudo apt install redis-server
    sudo service redis-server start
-   ```
+````
 
-4. **Ngrok**
-   Download and install [Ngrok](https://ngrok.com/) to expose your local FastAPI server to the internet.
+4.  **Ngrok**
+    Download and install [Ngrok](https://ngrok.com/) to expose your local FastAPI server to the internet.
 
----
+-----
 
 ## Setup Instructions
 
-### 1. Clone the Repository
+### 1\. Clone the Repository
 
 ```bash
 git clone <repository-url>
 cd IVR-Project
 ```
 
-### 2. Create a Virtual Environment
+### 2\. Create a Virtual Environment
 
 ```bash
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 ```
 
-### 3. Install Dependencies
+### 3\. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment Variables
+### 4\. Configure Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -128,13 +141,13 @@ REDIS_PORT=6379
 REDIS_DB=0
 ```
 
-### 5. Run the Application
+### 5\. Run the Application
 
 ```bash
 uvicorn backend:app --reload
 ```
 
-### 6. Expose the Server via Ngrok
+### 6\. Expose the Server via Ngrok
 
 ```bash
 ngrok http 8000
@@ -142,92 +155,98 @@ ngrok http 8000
 
 Copy the **public URL** from Ngrok.
 
-### 7. Configure Twilio Webhook
+### 7\. Configure Twilio Webhook
 
-1. Go to the [Twilio Console](https://www.twilio.com/console).
-2. Navigate to **Phone Numbers → Manage Numbers → Active Numbers**.
-3. Under **Voice & Fax**, set the webhook URL to:
+1.  Go to the [Twilio Console](https://www.twilio.com/console).
 
-   ```
-   https://<ngrok-public-url>/twilio/incoming_call
-   ```
-4. Save the configuration.
+2.  Navigate to **Phone Numbers → Manage Numbers → Active Numbers**.
 
----
+3.  Under **Voice & Fax**, set the webhook URL to:
+
+    ```
+    https://<ngrok-public-url>/twilio/incoming_call
+    ```
+
+4.  Save the configuration.
+
+-----
 
 ## Endpoints
 
-### 1. Health Check
+### 1\. Health Check
 
-* **URL**: `/`
-* **Method**: `GET`
-* **Description**: Verifies that the IVR system is running.
-* **Response**:
+  * **URL**: `/`
 
-  ```json
-  { "status": "Reservation system is running", "platform": "Twilio" }
-  ```
+  * **Method**: `GET`
 
-### 2. Incoming Call Webhook
+  * **Description**: Verifies that the IVR system is running.
 
-* **URL**: `/twilio/incoming_call`
-* **Method**: `POST`
-* **Description**: Handles incoming calls and plays the main menu.
+  * **Response**:
 
-### 3. Gather Input
+    ```json
+    { "status": "Reservation system is running", "platform": "Twilio" }
+    ```
 
-* **URL**: `/twilio/gather`
-* **Method**: `POST`
-* **Description**: Processes keypad input and routes users accordingly.
+### 2\. Incoming Call Webhook
 
-### 4. Conversational Flow
+  * **URL**: `/twilio/incoming_call`
+  * **Method**: `POST`
+  * **Description**: Handles incoming calls and plays the main menu.
 
-* **URL**: `/twilio/conversational_call`
-* **Method**: `POST`
-  Starts a speech-enabled conversation.
-* **URL**: `/twilio/conversational_gather`
-* **Method**: `POST`
-  Processes speech input through the DialogueFlowManager.
+### 3\. Gather Input
 
-### 5. Smart (Hybrid) Input Mode
+  * **URL**: `/twilio/gather`
+  * **Method**: `POST`
+  * **Description**: Processes keypad input and routes users accordingly.
 
-* **URL**: `/twilio/smart_call`
-* **URL**: `/twilio/smart_gather`
-  Handles both **speech** and **DTMF** input for flexibility.
+### 4\. Conversational Flow
 
-### 6. Reservation Management
+  * **URL**: `/twilio/conversational_call`
+  * **Method**: `POST`
+    Starts a speech-enabled conversation.
+  * **URL**: `/twilio/conversational_gather`
+  * **Method**: `POST`
+    Processes speech input through the DialogueFlowManager.
 
-* **POST** `/twilio/reservation_menu` — Menu for reservation actions
-* **POST** `/twilio/check_reservation` — Guides users to check reservations
-* **DELETE** `/cancel_reservation/{reservation_id}` — Cancels a reservation by ID
+### 5\. Smart (Hybrid) Input Mode
 
----
+  * **URL**: `/twilio/smart_call`
+  * **URL**: `/twilio/smart_gather`
+    Handles both **speech** and **DTMF** input for flexibility.
+
+### 6\. Reservation Management
+
+  * **POST** `/twilio/reservation_menu` — Menu for reservation actions
+  * **POST** `/twilio/check_reservation` — Guides users to check reservations
+  * **DELETE** `/cancel_reservation/{reservation_id}` — Cancels a reservation by ID
+
+-----
 
 ## Conversational AI Logic
 
-* **State Management:** Tracks progress (name, date, time, guests) in Redis.
-* **Intent Recognition:** Detects “make”, “check”, or “cancel” reservation.
-* **Entity Extraction:** Captures name, date, time, and party size from speech.
-* **Dynamic Prompts:** Adapts responses based on what user said or missed.
+  * **State Management:** Tracks progress (name, date, time, guests) in Redis.
+  * **Intent Recognition:** Detects “make”, “check”, or “cancel” reservation.
+  * **Entity Extraction:** Captures name, date, time, and party size from speech.
+  * **Dynamic Prompts:** Adapts responses based on what user said or missed.
 
 ### Smart Time Handling
 
-* Recognizes spoken AM/PM (“morning”, “evening”, “night”).
-* Detects context when users only say “1” or “seven”.
-* Validates times between **9 AM – 10 PM**.
-* Prevents infinite clarification loops.
-* If ambiguous, asks once:
-  *“I heard 1. Is that in the morning or evening?”*
+  * Recognizes spoken AM/PM (“morning”, “evening”, “night”).
+  * Detects context when users only say “1” or “seven”.
+  * Validates times between **9 AM – 10 PM**.
+  * Prevents infinite clarification loops.
+  * If ambiguous, asks once:
+    *“I heard 1. Is that in the morning or evening?”*
 
----
+-----
 
 ## Error Handling
 
-* All exceptions are logged.
-* Generic **500 Internal Server Error** returned for unhandled exceptions.
-* Redis/Twilio connection errors return descriptive **400 Bad Request** messages.
+  * All exceptions are logged.
+  * Generic **500 Internal Server Error** returned for unhandled exceptions.
+  * Redis/Twilio connection errors return descriptive **400 Bad Request** messages.
 
----
+-----
 
 ## Testing Locally
 
@@ -246,20 +265,22 @@ User: "Two."
 System: "Perfect. Your reservation ID is AB1234. Thank you for calling!"
 ```
 
----
+-----
 
 ## Logging
 
 All interactions are logged, including:
 
-* Incoming Twilio requests
-* Extracted entities (name, date, time)
-* Redis state transitions
-* Errors and exceptions
+  * Incoming Twilio requests
+  * Extracted entities (name, date, time)
+  * Redis state transitions
+  * Errors and exceptions
 
----
+-----
 
 ## License
 
-## This project is licensed under the **MIT License**.
+This project is licensed under the **MIT License**.
 
+```
+```
