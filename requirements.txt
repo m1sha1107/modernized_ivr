@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-dotenv
+redis
+twilio
+pydantic
+# Add any other libraries you might have used
