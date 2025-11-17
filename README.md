@@ -1,6 +1,5 @@
 # IVR Restaurant Reservation System (Twilio + FastAPI + Redis + AI)
 
-## 🚀 Live Demo
 
 You can interact with a live deployment of this system.
 
